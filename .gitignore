@@ -17,3 +17,7 @@ Thumbs.db
 # OneDrive temporary files
 ~$*
 *.tmp
+
+# Ignore dataset images
+waste-ml/images/
+frontend/images/
