@@ -19,5 +19,4 @@ Thumbs.db
 *.tmp
 
 # Ignore dataset images
-waste-ml/images/
-frontend/images/
+waste-ml/Dataset/

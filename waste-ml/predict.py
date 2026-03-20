@@ -1,20 +1,13 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # hide info/warnings
-
 import tensorflow as tf
-tf.get_logger().setLevel('ERROR')  # hide TF/Keras logs
-
 import numpy as np
-from tensorflow.keras.preprocessing import image
 
-# Load model quietly
-model = tf.keras.models.load_model("waste_mobilenet_model.keras", compile=False)
+print("🔄 Loading model...")
 
-# Save the model (directly, no need for _)
-model.save("waste_mobilenet_model_saved.keras")
+model = tf.keras.models.load_model("working_model.h5", compile=False)
 
-# Classes
-classes = [
+print("✅ Model loaded successfully!")
+
+class_names = [
     "ewaste",
     "food_waste",
     "leaf_waste",
@@ -25,11 +18,19 @@ classes = [
     "wood_waste"
 ]
 
-# Load and preprocess image
-img = image.load_img("sample.jpg", target_size=(224,224))
-img_array = np.expand_dims(np.array(img)/255.0, axis=0)
+def predict_image(img_path):
+    img = tf.keras.utils.load_img(img_path, target_size=(224, 224))
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0) / 255.0
 
-# Predict quietly
-prediction = model.predict(img_array, verbose=0)
+    predictions = model.predict(img_array)
 
-print("Prediction:", classes[np.argmax(prediction)])
+    index = np.argmax(predictions)
+    confidence = predictions[0][index] * 100
+
+    print("\n🧠 Prediction:", class_names[index])
+    print("📊 Confidence: {:.2f}%".format(confidence))
+
+
+predict_image("sample.jpg")
+predict_image("Food1.jpeg")
