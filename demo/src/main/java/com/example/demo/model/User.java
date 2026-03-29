@@ -34,7 +34,7 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
-    // Address
+ 
     private String houseNumber;
     private String street;
     private String area;
@@ -42,11 +42,11 @@ public class User {
     private String state;
     private String pincode;
 
-    // Map
+  
     private Double latitude;
     private Double longitude;
 
-    // USER specific
+   
     private Integer householdSize;
     private String wastePreference;
 

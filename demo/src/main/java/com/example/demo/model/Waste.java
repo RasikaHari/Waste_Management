@@ -1,6 +1,7 @@
 package com.example.demo.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Min;
 import lombok.*;
 import java.time.LocalDateTime;
 
@@ -18,7 +19,10 @@ public class Waste {
     private String title;
     private String description;
 
-    private String foodType;
+    
+    private String wasteType;
+
+    @Min(1)
     private Integer quantity;
 
     @Enumerated(EnumType.STRING)
@@ -26,12 +30,15 @@ public class Waste {
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    // Posted by USER
+   
+    private String imagePath;
+
+    
     @ManyToOne
     @JoinColumn(name = "user_id")
     private User user;
 
-    // Accepted by ORPHANAGE
+    
     @ManyToOne
     @JoinColumn(name = "accepted_by")
     private User acceptedBy;

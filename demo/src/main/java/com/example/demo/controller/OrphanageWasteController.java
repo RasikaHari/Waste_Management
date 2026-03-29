@@ -17,13 +17,11 @@ public class OrphanageWasteController {
         this.wasteService = wasteService;
     }
 
-    // 🏢 View Available Waste
     @GetMapping
     public List<Waste> getAvailableWaste() {
         return wasteService.getAvailableWaste();
     }
 
-    // 🏢 Accept Waste
     
     @PutMapping("/{id}/accept")
 public Waste acceptWaste(@PathVariable Long id,

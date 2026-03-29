@@ -1,88 +1,167 @@
 package com.example.demo.service;
 
-import com.example.demo.dto.WasteRequest;
 import com.example.demo.model.*;
 import com.example.demo.repository.WasteRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class WasteService {
 
     private final WasteRepository wasteRepository;
     private final UserService userService;
+    private final FlaskService flaskService;
 
     public WasteService(WasteRepository wasteRepository,
-                        UserService userService) {
+                        UserService userService,
+                        FlaskService flaskService) {
         this.wasteRepository = wasteRepository;
         this.userService = userService;
+        this.flaskService = flaskService;
     }
 
-    // 👤 USER posts waste
-   public Waste postWaste(WasteRequest request, String email) {
+    public Waste postWaste(MultipartFile file,
+                           String title,
+                           String description,
+                           Integer quantity,
+                           String email) {
 
-    User user = userService.findByEmail(email);
+        try {
+            User user = userService.findByEmail(email);
 
-    Waste waste = new Waste();
-    waste.setTitle(request.getTitle());
-    waste.setDescription(request.getDescription());
-    waste.setFoodType(request.getFoodType());
-    waste.setQuantity(request.getQuantity());
-    waste.setStatus(WasteStatus.AVAILABLE);
-    waste.setCreatedAt(LocalDateTime.now());
-    waste.setUser(user);
+            String response = flaskService.sendImage(file.getBytes());
+           
+           ObjectMapper mapper = new ObjectMapper();
 
-    return wasteRepository.save(waste);
+Map<String, Object> result = mapper.readValue(response, Map.class);
+
+String wasteType = (String) result.get("prediction");
+
+
+if (wasteType == null || wasteType.trim().isEmpty()) {
+    wasteType = "UNKNOWN";
+}
+if ("FOOD".equalsIgnoreCase(wasteType)) {
+    if (quantity == null || quantity < 1) {
+        throw new RuntimeException("Food waste must have quantity >= 1");
+    }
+} else {
+    quantity = null; 
+}
+if (title == null) {
+    title = "";
+}
+if (description == null) {
+    description = "";
 }
 
-    // 👤 USER views own waste
+
+          
+            String original = Optional.ofNullable(file.getOriginalFilename())
+        .orElse("image.jpg");
+
+            String fileName = UUID.randomUUID() + "_" + original.replaceAll("\\s+", "_");
+           
+            String uploadDir = System.getProperty("user.dir") + "/uploads/";
+            File dir = new File(uploadDir);
+            if (!dir.exists()) dir.mkdirs();
+
+            String filePath = uploadDir + fileName;
+            file.transferTo(new File(filePath));
+
+          
+            Waste waste = new Waste();
+            waste.setTitle(title);
+            waste.setDescription(description);
+            waste.setQuantity(quantity);
+            waste.setWasteType(wasteType);
+            waste.setImagePath(filePath);
+       
+            if (wasteType.equalsIgnoreCase("FOOD")) 
+            {
+                waste.setStatus(WasteStatus.AVAILABLE);
+            } else {
+                waste.setStatus(WasteStatus.NON_EDIBLE);
+            }
+            waste.setCreatedAt(LocalDateTime.now());
+            waste.setUser(user);
+
+            return wasteRepository.save(waste);
+
+        } catch (Exception e) {
+    e.printStackTrace();  
+    throw new RuntimeException("Upload failed: " + e.getMessage());
+}
+    }
+
+    public Waste getWasteById(Long id) {
+    return wasteRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Waste not found"));
+}
     public List<Waste> getUserWaste(String email) {
         User user = userService.findByEmail(email);
         return wasteRepository.findByUser(user);
     }
 
-    // 🏢 ORPHANAGE views available waste
     public List<Waste> getAvailableWaste() {
         return wasteRepository.findByStatus(WasteStatus.AVAILABLE);
     }
 
-    // 🏢 ORPHANAGE accepts waste
-   public Waste acceptWaste(Long wasteId, String email) {
+    public Waste acceptWaste(Long wasteId, String email) {
 
-    Waste waste = wasteRepository.findById(wasteId)
-            .orElseThrow(() -> new RuntimeException("Waste not found"));
+        Waste waste = wasteRepository.findById(wasteId)
+                .orElseThrow(() -> new RuntimeException("Waste not found"));
 
-    if (waste.getStatus() != WasteStatus.AVAILABLE) {
-        throw new RuntimeException("Waste already accepted or expired");
+        if (waste.getAcceptedBy() != null) {
+            throw new RuntimeException("Already accepted");
+        }
+         if (waste.getCreatedAt().plusHours(3).isBefore(LocalDateTime.now())) {
+        waste.setStatus(WasteStatus.EXPIRED);
+        wasteRepository.save(waste);
+        throw new RuntimeException("Waste is expired and cannot be accepted");
+        }
+        if (waste.getStatus() != WasteStatus.AVAILABLE) {
+            throw new RuntimeException("Already accepted/expired");
+        }
+
+        User orphanage = userService.findByEmail(email);
+        if (orphanage.getRole() != Role.ORPHANAGE) {
+            throw new RuntimeException("Only orphanage can accept waste");
+        }
+        waste.setStatus(WasteStatus.ACCEPTED);
+        waste.setAcceptedBy(orphanage);
+
+        return wasteRepository.save(waste);
     }
 
-    User orphanage = userService.findByEmail(email);
+    public void deleteWaste(Long id, String email) {
+    Waste waste = wasteRepository.findById(id)
+        .orElseThrow(() -> new RuntimeException("Waste not found"));
 
-    waste.setStatus(WasteStatus.ACCEPTED);
-    waste.setAcceptedBy(orphanage);
+    if (!waste.getUser().getEmail().equals(email)) {
+        throw new RuntimeException("Unauthorized");
+    }
 
-    return wasteRepository.save(waste);
+    wasteRepository.delete(waste);
 }
-    // 👤 USER delete waste
-    public void deleteWaste(Long id) {
-        wasteRepository.deleteById(id);
-    }
-        @Scheduled(fixedRate = 60000) // every 1 minute
-public void expireOldWaste() {
 
-    List<Waste> availableWaste = wasteRepository.findByStatus(WasteStatus.AVAILABLE);
+    @Scheduled(fixedRate = 60000)
+    public void expireOldWaste() {
 
-    for (Waste waste : availableWaste) {
+        List<Waste> list = wasteRepository.findByStatus(WasteStatus.AVAILABLE);
 
-        if (waste.getCreatedAt().plusHours(3).isBefore(LocalDateTime.now())) {
-
-            waste.setStatus(WasteStatus.EXPIRED);
-            wasteRepository.save(waste);
+        for (Waste waste : list) {
+            if (waste.getCreatedAt().plusHours(3).isBefore(LocalDateTime.now())) {
+                waste.setStatus(WasteStatus.EXPIRED);
+                wasteRepository.save(waste);
+            }
         }
     }
-}
 }
